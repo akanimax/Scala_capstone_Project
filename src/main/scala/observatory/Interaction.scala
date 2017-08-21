@@ -1,7 +1,8 @@
 package observatory
 
+import java.lang.Math._
+
 import com.sksamuel.scrimage.{Image, Pixel}
-import Math._
 
 /**
   * 3rd milestone: interactive visualization
@@ -34,8 +35,8 @@ object Interaction {
     */
   def tile(temperatures: Iterable[(Location, Double)], colors: Iterable[(Double, Color)],
            zoom: Int, x: Int, y: Int): Image = {
+    /** !! The method has been parallelized to run faster !! */
 
-    /** Current Implementation doesn't use the suggested recursive strategy*/
     import Visualization._
 
     // set the constant dimension
@@ -43,14 +44,18 @@ object Interaction {
     val alpha_value = 127
     val constant_high_zoom = 8
 
-    // generate an array of Pixel values for every location inside the tile
-    val imgData = (for {
+    // generate all possible pixel coordinates for the given location
+    val coordinates = (for {
       j <- (y * dimension) until ((y * dimension) + dimension)
       i <- (x * dimension) until ((x * dimension) + dimension)
-    } yield interpolateColor(
+    } yield (i, j)).par
+
+    val imgData = coordinates.map {
+      case(i, j) => interpolateColor (
         colors,
         predictTemperature(temperatures, tileLocation(zoom + constant_high_zoom, i, j))
-    )).map(x => Pixel(x.red, x.green, x.blue, alpha_value)).toArray
+      )
+    }.map(x => Pixel(x.red, x.green, x.blue, alpha_value)).toArray
 
     // return the Image corresponding to this:
     Image(dimension, dimension, imgData)
@@ -67,9 +72,23 @@ object Interaction {
     yearlyData: Iterable[(Int, Data)],
     generateImage: (Int, Int, Int, Int, Data) => Unit
   ): Unit = {
-    yearlyData.foreach {
-      case (year, data) =>
+    yearlyData.par.foreach {
+      case (year, data) => {
+        // generate the tile based images for them and save them at appropriate
+        // location
+        val tile_coordinates = (for {
+          zoom <- 0 to 3
+          j <- 0 until pow(2, zoom).toInt
+          i <- 0 until pow(2, zoom).toInt
+        } yield (zoom, i, j)).par
 
+        // for every such tile generate tile image and save it
+        tile_coordinates.foreach {
+          case(zoom, x, y) =>
+            // generate the tile and save it at the proper location
+            generateImage(year, zoom, x, y, data)
+        }
+      }
     }
   }
 
